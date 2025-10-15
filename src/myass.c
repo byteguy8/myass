@@ -67,7 +67,7 @@ static void add_keyword(LZOHTable *keywords, const char *name, TokenType type){
     );
 }
 
-LZOHTable *create_registers_keywords(Allocator *allocator){
+LZOHTable *create_registers_keywords(const Allocator *allocator){
     LZOHTable *registers = MEMORY_LZOHTABLE(allocator);
 
     add_keyword(registers, "rax", REGISTER_TOKEN_TYPE);
@@ -90,7 +90,7 @@ LZOHTable *create_registers_keywords(Allocator *allocator){
     return registers;
 }
 
-LZOHTable *create_instructions_keywords(Allocator *allocator){
+LZOHTable *create_instructions_keywords(const Allocator *allocator){
     LZOHTable *registers = MEMORY_LZOHTABLE(allocator);
 
     add_keyword(registers, "add", ADD_TOKEN_TYPE);
