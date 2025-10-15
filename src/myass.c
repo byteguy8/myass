@@ -21,6 +21,8 @@
 
 typedef struct myass{
     jmp_buf          err_buf;
+    LZOHTable        *registers_keywords;
+    LZOHTable        *instructions_keywords;
     LZBBuff          *bbuff;
     LZArena          *arena;
     AllocatorContext *arena_allocator_context;
@@ -334,12 +336,16 @@ static void assemble_instructions(MyAss *myass, DynArr *instructions){
 }
 
 MyAss *myass_create(const Allocator *allocator){
+    LZOHTable *registers_keywords = create_registers_keywords(allocator);
+    LZOHTable *instructions_keywords = create_instructions_keywords(allocator);
     LZBBuff *bbuff = lzbbuff_create(8192, (LZBBuffAllocator *)allocator);
     LZArena *arena = lzarena_create((LZArenaAllocator *)allocator);
     AllocatorContext *allocator_context = MEMORY_ALLOC(AllocatorContext, 1, allocator);
     MyAss *myass = MEMORY_ALLOC(MyAss, 1, allocator);
 
-    if(!bbuff || !arena || !allocator_context || !myass){
+    if(!registers_keywords || !instructions_keywords || !bbuff || !arena || !allocator_context || !myass){
+        LZOHTABLE_DESTROY(registers_keywords);
+        LZOHTABLE_DESTROY(instructions_keywords);
         lzbbuff_destroy(bbuff);
         lzarena_destroy(arena);
         MEMORY_DEALLOC(allocator_context, AllocatorContext, 1, allocator);
@@ -351,6 +357,8 @@ MyAss *myass_create(const Allocator *allocator){
     allocator_context->err_buf = &myass->err_buf;
     allocator_context->behind_allocator = arena;
 
+    myass->registers_keywords = registers_keywords;
+    myass->instructions_keywords = instructions_keywords;
     myass->bbuff = bbuff;
     myass->arena = arena;
     myass->arena_allocator_context = allocator_context;
@@ -374,6 +382,8 @@ void myass_destroy(MyAss *myass){
 
     const Allocator *allocator = myass->allocator;
 
+    LZOHTABLE_DESTROY(myass->registers_keywords);
+    LZOHTABLE_DESTROY(myass->instructions_keywords);
     lzbbuff_destroy(myass->bbuff);
     MEMORY_DEALLOC(myass->arena_allocator_context, AllocatorContext, 1, allocator);
     lzarena_destroy(myass->arena);
@@ -489,8 +499,8 @@ int myass_assemble(MyAss *myass, size_t input_len, const char *input){
     if(setjmp(myass->err_buf) == 0){
         lzbbuff_restart(BBUFF);
 
-        LZOHTable *registers_keywords = create_registers_keywords(ALLOCATOR);
-        LZOHTable *instructions_keywords = create_instructions_keywords(ALLOCATOR);
+        LZOHTable *registers_keywords = myass->registers_keywords;
+        LZOHTable *instructions_keywords = myass->instructions_keywords;
         DynArr *tokens = MEMORY_DYNARR_PTR(ALLOCATOR);
         DynArr *instructions = MEMORY_DYNARR_PTR(ALLOCATOR);
         BStr code = {.len = input_len, .buff = input};
