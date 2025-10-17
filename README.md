@@ -22,6 +22,8 @@ Those instructions only can operate on registers and immediate (32 bits) values.
 
 ## Examples
 
+### Count 100 times
+
 ```
   mov r10, 1
   mov r11, 100
