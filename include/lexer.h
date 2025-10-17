@@ -10,8 +10,8 @@
 typedef struct lexer{
     size_t    start_line_offset;
     size_t    end_line_offset;
-    size_t    start_line;
-    size_t    end_line;
+    int32_t   start_line;
+    int32_t   end_line;
     size_t    start;
     size_t    current;
     jmp_buf   err_buf;

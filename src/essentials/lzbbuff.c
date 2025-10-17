@@ -216,6 +216,18 @@ int lzbbuff_write_bytes(LZBBuff *buff, size_t alignment, size_t len, const void 
     return 0;
 }
 
+int lzbbuff_overwrite_bytes(LZBBuff *buff, size_t alignment, size_t offset, size_t len, const void *bytes){
+    lzbbuff_byte *new_offset = (alignment > 0 ? align_ptr(alignment, buff->raw_buff + offset) : buff->raw_buff + offset) + len;
+
+    if(new_offset >= (buff->raw_buff + buff->capacity)){
+        return 1;
+    }
+
+    memmove(new_offset - len, bytes, len);
+
+    return 0;
+}
+
 inline int lzbbuff_write_byte(LZBBuff *buff, size_t alignment, lzbbuff_byte value){
     return lzbbuff_write_bytes(buff, alignment, sizeof(lzbbuff_byte), &value);
 }
@@ -234,4 +246,8 @@ inline int lzbbuff_write_qword(LZBBuff *buff, size_t alignment, lzbbuff_qword va
 
 int lzbbuff_write_ascii(LZBBuff *buff, size_t alignment, lzbbuff_ascii value){
     return lzbbuff_write_bytes(buff, alignment, strlen(value), value);
+}
+
+inline int lzbbuff_overwrite_dword(LZBBuff *buff, size_t alignment, size_t offset, lzbbuff_dword value){
+    return lzbbuff_overwrite_bytes(buff, alignment, offset, sizeof(lzbbuff_dword), &value);
 }

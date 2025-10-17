@@ -1,6 +1,7 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include "lzstack.h"
 #include "lzohtable.h"
 
 #include <stddef.h>
@@ -39,6 +40,7 @@ typedef struct allocator{
 #define MEMORY_NEW(_allocator, _type, ...)                             ((_type *)(memcpy(MEMORY_ALLOC(_type, 1, _allocator), &(_type){__VA_ARGS__}, sizeof(_type))))
 #define MEMORY_DYNARR_TYPE(_allocator, _type)                          (dynarr_create(sizeof(_type), (DynArrAllocator *)(_allocator)))
 #define MEMORY_DYNARR_PTR(_allocator)                                  (DYNARR_CREATE_PTR((DynArrAllocator *)(_allocator)))
+#define MEMORY_LZSTACK(_allocator)                                     (lzstack_create((LZStackAllocator *)(_allocator)))
 #define MEMORY_LZOHTABLE(_allocator)                                   (lzohtable_create(16, 0.85, (LZOHTableAllocator *)(_allocator)))
 
 #endif

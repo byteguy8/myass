@@ -1,11 +1,13 @@
 #include "parser.h"
 #include "token.h"
 #include "instruction.h"
+#include "lzbbuff.h"
 
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <assert.h>
-#include <lzbbuff.h>
+#include <inttypes.h>
 
 #define CURRENT_LEXEME (peek(parser)->lexeme)
 #define ALLOCATOR (parser->allocator)
@@ -25,6 +27,7 @@ static Token *consume(Parser *parser, TokenType type, char *fmt, ...);
 static X64Register token_to_register(Token *token);
 static Location *create_register_location(Parser *parser, X64Register reg);
 static Location *create_literal_location(Parser *parser, dword value);
+static Location *create_label_location(Parser *parser, Token *label_token);
 static Location *token_to_location(Parser *parser, Token *location_token);
 static Instruction *parse_instruction(Parser *parser);
 //------------------------------------------------------------
@@ -35,13 +38,13 @@ static void error(Parser *parser, Token *token, char *fmt, ...){
     va_start(args, fmt);
 
     fprintf(
-        stderr,
-        "PARSER ERROR - from line %d (col %d), to line %d (col %d)\n\t",
-        token->start_line,
-        token->start_col,
-        token->end_line,
-        token->end_col
-    );
+		stderr,
+		"PARSER ERROR - from line(col: %"PRId32"): %"PRId32", to line(col: %"PRId32"): %"PRId32":\n\t",
+		token->start_col,
+		token->start_line,
+		token->end_col,
+		token->end_line
+	);
     vfprintf(stderr, fmt, args);
     fprintf(stderr, "\n");
 
@@ -103,17 +106,19 @@ static Token *consume(Parser *parser, TokenType type, char *fmt, ...){
     va_start(args, fmt);
 
     fprintf(
-        stderr,
-        "PARSER ERROR - from line %d (col %d), to line %d (col %d)\n\t",
-        token->start_line,
-        token->start_col,
-        token->end_line,
-        token->end_col
-    );
+		stderr,
+		"PARSER ERROR - from line(col: %"PRId32"): %"PRId32", to line(col: %"PRId32"): %"PRId32":\n\t",
+		token->start_col,
+		token->start_line,
+		token->end_col,
+		token->end_line
+	);
     vfprintf(stderr, fmt, args);
     fprintf(stderr, "\n");
 
     va_end(args);
+
+    longjmp(parser->err_buf, 1);
 
     return NULL;
 }
@@ -156,6 +161,21 @@ Location *create_register_location(Parser *parser, X64Register reg){
     );
 }
 
+Location *create_label_location(Parser *parser, Token *label_token){
+    LabelLocation *label_location = MEMORY_NEW(
+        ALLOCATOR,
+        LabelLocation,
+        label_token
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Location,
+        LABEL_LOCATION_TYPE,
+        label_location
+    );
+}
+
 Location *create_literal_location(Parser *parser, dword value){
     LiteralLocation *literal_location = MEMORY_NEW(
         ALLOCATOR,
@@ -181,6 +201,8 @@ Location *token_to_location(Parser *parser, Token *location_token){
             X64Register reg = token_to_register(location_token);
 
             return create_register_location(parser, reg);
+        }case IDENTIFIER_TOKEN_TYPE:{
+            return create_label_location(parser, location_token);
         }default:{
             assert("Illegal token type");
         }
@@ -190,7 +212,32 @@ Location *token_to_location(Parser *parser, Token *location_token){
 }
 
 Instruction *parse_instruction(Parser *parser){
+    if(match(parser, 1, IDENTIFIER_TOKEN_TYPE)){
+        Token *label_token = previous(parser);
+
+        consume(
+            parser,
+            COLON_TOKEN_TYPE,
+            "Expect ':' token after label, but got: '%s'",
+            CURRENT_LEXEME
+        );
+
+        EmptyInstruction *instruction = MEMORY_NEW(
+            ALLOCATOR,
+            EmptyInstruction,
+            label_token
+        );
+
+        return MEMORY_NEW(
+            ALLOCATOR,
+            Instruction,
+            LABEL_INSTRUCTION_TYPE,
+            instruction
+        );
+    }
+
     if(match(parser, 1, ADD_TOKEN_TYPE)){
+    	Token *instruction_token = previous(parser);
         Token *dst_token = consume(
             parser,
             REGISTER_TOKEN_TYPE,
@@ -225,6 +272,7 @@ Instruction *parse_instruction(Parser *parser){
             BinaryInstruction,
             token_to_location(parser, dst_token),
             token_to_location(parser, src_token),
+            instruction_token,
             dst_token,
             src_token
         );
@@ -237,7 +285,57 @@ Instruction *parse_instruction(Parser *parser){
         );
     }
 
+    if(match(parser, 1, CMP_TOKEN_TYPE)){
+        Token *instruction_token = previous(parser);
+        Token *dst_token = consume(
+            parser,
+            REGISTER_TOKEN_TYPE,
+            "Expect register, but got: '%s'",
+            CURRENT_LEXEME
+        );
+
+        consume(
+            parser,
+            COMMA_TOKEN_TYPE,
+            "Expect ',' token after dest operand, but got: '%s'",
+            CURRENT_LEXEME
+        );
+
+        Token *src_token = NULL;
+
+        if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
+            src_token = previous(parser);
+        }
+
+        if(!src_token){
+            error(
+                parser,
+                instruction_token,
+                "Expect immediate value or register after ',' token as source operand, but got: '%s'",
+                CURRENT_LEXEME
+            );
+        }
+
+        BinaryInstruction *instruction = MEMORY_NEW(
+            ALLOCATOR,
+            BinaryInstruction,
+            token_to_location(parser, dst_token),
+            token_to_location(parser, src_token),
+            instruction_token,
+            dst_token,
+            src_token
+        );
+
+        return MEMORY_NEW(
+            ALLOCATOR,
+            Instruction,
+            CMP_INSTRUCTION_TYPE,
+            instruction
+        );
+    }
+
     if(match(parser, 1, IDIV_TOKEN_TYPE)){
+    	Token *instruction_token = previous(parser);
         Token *src_token = consume(
             parser,
             REGISTER_TOKEN_TYPE,
@@ -249,6 +347,7 @@ Instruction *parse_instruction(Parser *parser){
             ALLOCATOR,
             UnaryInstruction,
             token_to_location(parser, src_token),
+            instruction_token,
             src_token,
         );
 
@@ -260,18 +359,101 @@ Instruction *parse_instruction(Parser *parser){
         );
     }
 
+    if(match(
+    	parser,
+     	5,
+      	JE_TOKEN_TYPE,
+       	JG_TOKEN_TYPE,
+        JL_TOKEN_TYPE,
+        JGE_TOKEN_TYPE,
+        JLE_TOKEN_TYPE
+    )){
+        Token *instruction_token = previous(parser);
+        Token *label_token = consume(
+            parser,
+            IDENTIFIER_TOKEN_TYPE,
+            "Expect label name after '%s' instruction, but got: '%s'",
+            instruction_token->lexeme,
+            CURRENT_LEXEME
+        );
+
+        UnaryInstruction *instruction = MEMORY_NEW(
+            ALLOCATOR,
+            UnaryInstruction,
+            token_to_location(parser, label_token),
+            instruction_token,
+            label_token,
+        );
+
+        InstructionType type;
+
+        switch (instruction_token->type){
+            case JE_TOKEN_TYPE:{
+                type = JE_INSTRUCTION_TYPE;
+                break;
+            }case JG_TOKEN_TYPE:{
+                type = JG_INSTRUCTION_TYPE;
+                break;
+            }case JL_TOKEN_TYPE:{
+                type = JL_INSTRUCTION_TYPE;
+                break;
+            }case JGE_TOKEN_TYPE:{
+                type = JGE_INSTRUCTION_TYPE;
+                break;
+            }case JLE_TOKEN_TYPE:{
+                type = JLE_INSTRUCTION_TYPE;
+                break;
+            }default:{
+                assert(0 && "Illegal token type");
+            }
+        }
+
+        return MEMORY_NEW(
+            ALLOCATOR,
+            Instruction,
+            type,
+            instruction
+        );
+    }
+
+    if(match(parser, 1, JMP_TOKEN_TYPE)){
+    	Token *instruction_token = previous(parser);
+        Token *label_token = consume(
+            parser,
+            IDENTIFIER_TOKEN_TYPE,
+            "Expect label name after jmp instruction, but got: '%s'",
+            CURRENT_LEXEME
+        );
+
+        UnaryInstruction *instruction = MEMORY_NEW(
+            ALLOCATOR,
+            UnaryInstruction,
+            token_to_location(parser, label_token),
+            instruction_token,
+            label_token,
+        );
+
+        return MEMORY_NEW(
+            ALLOCATOR,
+            Instruction,
+            JMP_INSTRUCTION_TYPE,
+            instruction
+        );
+    }
+
     if(match(parser, 1, MOV_TOKEN_TYPE)){
+    	Token *instruction_token = previous(parser);
         Token *dst_token = consume(
             parser,
             REGISTER_TOKEN_TYPE,
-            "Expect register, but got: '%s'",
+            "Expect register as destination operand, but got: '%s'",
             CURRENT_LEXEME
         );
 
         consume(
             parser,
             COMMA_TOKEN_TYPE,
-            "Expect ',', but got: '%s'",
+            "Expect ',' after destination operand, but got: '%s'",
             CURRENT_LEXEME
         );
 
@@ -285,7 +467,7 @@ Instruction *parse_instruction(Parser *parser){
             error(
                 parser,
                 peek(parser),
-                "Expect literal or register, but got: '%s'",
+                "Expect literal or register as source operand, but got: '%s'",
                 CURRENT_LEXEME
             );
         }
@@ -295,6 +477,7 @@ Instruction *parse_instruction(Parser *parser){
             BinaryInstruction,
             token_to_location(parser, dst_token),
             token_to_location(parser, src_token),
+            instruction_token,
             dst_token,
             src_token
         );
@@ -308,6 +491,7 @@ Instruction *parse_instruction(Parser *parser){
     }
 
     if(match(parser, 1, IMUL_TOKEN_TYPE)){
+    	Token *instruction_token = previous(parser);
         Token *dst_token = consume(
             parser,
             REGISTER_TOKEN_TYPE,
@@ -329,10 +513,6 @@ Instruction *parse_instruction(Parser *parser){
             CURRENT_LEXEME
         );
 
-        if(match(parser, 1, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
-
-        }
-
         if(!src_token){
             error(
                 parser,
@@ -347,6 +527,7 @@ Instruction *parse_instruction(Parser *parser){
             BinaryInstruction,
             token_to_location(parser, dst_token),
             token_to_location(parser, src_token),
+            instruction_token,
             dst_token,
             src_token
         );
@@ -360,6 +541,7 @@ Instruction *parse_instruction(Parser *parser){
     }
 
     if(match(parser, 1, SUB_TOKEN_TYPE)){
+    	Token *instruction_token = previous(parser);
         Token *dst_token = consume(
             parser,
             REGISTER_TOKEN_TYPE,
@@ -394,6 +576,7 @@ Instruction *parse_instruction(Parser *parser){
             BinaryInstruction,
             token_to_location(parser, dst_token),
             token_to_location(parser, src_token),
+            instruction_token,
             dst_token,
             src_token
         );
@@ -422,6 +605,7 @@ Instruction *parse_instruction(Parser *parser){
     }
 
     if(match(parser, 1, XOR_TOKEN_TYPE)){
+    	Token *instruction_token = previous(parser);
         Token *dst_token = consume(
             parser,
             REGISTER_TOKEN_TYPE,
@@ -456,6 +640,7 @@ Instruction *parse_instruction(Parser *parser){
             BinaryInstruction,
             token_to_location(parser, dst_token),
             token_to_location(parser, src_token),
+            instruction_token,
             dst_token,
             src_token
         );
