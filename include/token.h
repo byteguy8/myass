@@ -23,6 +23,8 @@ typedef enum token_type{
     JLE_TOKEN_TYPE,
     JMP_TOKEN_TYPE,
     MOV_TOKEN_TYPE,
+    POP_TOKEN_TYPE,
+    PUSH_TOKEN_TYPE,
     SUB_TOKEN_TYPE,
     RET_TOKEN_TYPE,
     XOR_TOKEN_TYPE,

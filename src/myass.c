@@ -10,6 +10,7 @@
 
 #include "location.h"
 #include "instruction.h"
+#include "types.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -17,10 +18,6 @@
 #include <setjmp.h>
 #include <stdarg.h>
 #include <inttypes.h>
-
-#define ARENA (myass->arena)
-#define ALLOCATOR (&(myass->arena_allocator))
-#define BBUFF (myass->bbuff)
 
 typedef enum symbol_type{
     LABEL_SYMBOL_TYPE,
@@ -60,9 +57,17 @@ typedef enum mod{
     REG_MODE,
 }Mod;
 
+//------------------------------------------------------------------------------------//
+//                                 PRIVATE INTERFACE                                  //
+//------------------------------------------------------------------------------------//
+#define ARENA (myass->arena)
+#define ALLOCATOR (&(myass->arena_allocator))
+#define BBUFF (myass->bbuff)
+
 static void error(MyAss *myass, Token *token, char *msg, ...);
+
 static byte rex(
-    byte w, // 64bit mode
+    byte w, // 64 bits mode
     byte r, // extend reg field (ModRM)
     byte x, // extend index field (SIB)
     byte b  // extend r/m base field
@@ -71,10 +76,12 @@ static byte mod_rm(Mod mod, X64Register dest, X64Register source);
 static void add_keyword(LZOHTable *keywords, const char *name, TokenType type);
 static LZOHTable *create_registers_keywords(const Allocator *allocator);
 static LZOHTable *create_instructions_keywords(const Allocator *allocator);
+
 static void assemble_add_instruction(MyAss *myass, BinaryInstruction *instruction);
 static void assemble_call_instruction(MyAss *myass, UnaryInstruction *instruction);
 static void assemble_cmp_instruction(MyAss *myass, BinaryInstruction *instruction);
 static void assemble_idiv_instruction(MyAss *myass, UnaryInstruction *instruction);
+static void assemble_imul_instruction(MyAss *myass, BinaryInstruction *instruction);
 static void assemble_jcc_instructions(
 	MyAss *myass,
 	InstructionType type,
@@ -82,14 +89,19 @@ static void assemble_jcc_instructions(
 );
 static void assemble_jmp_instruction(MyAss *myass, UnaryInstruction *instruction);
 static void assemble_mov_instruction(MyAss *myass, BinaryInstruction *instruction);
-static void assemble_imul_instruction(MyAss *myass, BinaryInstruction *instruction);
+static void assemble_pop_instruction(MyAss *myass, UnaryInstruction *instruction);
+static void assemble_push_instruction(MyAss *myass, UnaryInstruction *instruction);
 static void assemble_sub_instruction(MyAss *myass, BinaryInstruction *instruction);
 static void assemble_ret_instruction(MyAss *myass);
 static void assemble_xor_instruction(MyAss *myass, BinaryInstruction *instruction);
+
 static void assemble_instruction(MyAss *myass, Instruction *instruction);
 static void assemble_instructions(MyAss *myass, DynArr *instructions);
 static void resolve_jumps(MyAss *myass);
 
+//------------------------------------------------------------------------------------//
+//                               PRIVATE IMPLEMENTATION                               //
+//------------------------------------------------------------------------------------//
 void error(MyAss *myass, Token *token, char *msg, ...){
 	va_list args;
 	va_start(args, msg);
@@ -178,6 +190,8 @@ LZOHTable *create_instructions_keywords(const Allocator *allocator){
     add_keyword(instructions, "jle", JLE_TOKEN_TYPE);
     add_keyword(instructions, "jmp", JMP_TOKEN_TYPE);
     add_keyword(instructions, "mov", MOV_TOKEN_TYPE);
+    add_keyword(instructions, "push", PUSH_TOKEN_TYPE);
+    add_keyword(instructions, "pop", POP_TOKEN_TYPE);
     add_keyword(instructions, "sub", SUB_TOKEN_TYPE);
     add_keyword(instructions, "ret", RET_TOKEN_TYPE);
     add_keyword(instructions, "xor", XOR_TOKEN_TYPE);
@@ -301,6 +315,33 @@ void assemble_idiv_instruction(MyAss *myass, UnaryInstruction *instruction){
     }
 }
 
+void assemble_imul_instruction(MyAss *myass, BinaryInstruction *instruction){
+    Location *dst_location = instruction->dst_location;
+    Location *src_location = instruction->src_location;
+
+    switch (dst_location->type){
+        case REGISTER_LOCATION_TYPE:{
+            RegisterLocation *dst = dst_location->sub_location;
+
+            switch (src_location->type){
+                case REGISTER_LOCATION_TYPE:{
+                    RegisterLocation *src = src_location->sub_location;
+
+                    myass_imul_r64_r64(myass, dst->reg, src->reg);
+
+                    break;
+                }default:{
+                    assert(0 && "Illegal location type");
+                }
+            }
+
+            break;
+        }default:{
+            assert(0 && "Illegal location type");
+        }
+    }
+}
+
 void assemble_jcc_instructions(
 	MyAss *myass,
 	InstructionType type,
@@ -409,31 +450,36 @@ void assemble_mov_instruction(MyAss *myass, BinaryInstruction *instruction){
     }
 }
 
-void assemble_imul_instruction(MyAss *myass, BinaryInstruction *instruction){
-    Location *dst_location = instruction->dst_location;
-    Location *src_location = instruction->src_location;
+void assemble_pop_instruction(MyAss *myass, UnaryInstruction *instruction){
+	Location *dst_location = instruction->location;
 
-    switch (dst_location->type){
-        case REGISTER_LOCATION_TYPE:{
-            RegisterLocation *dst = dst_location->sub_location;
+	switch (dst_location->type) {
+		case REGISTER_LOCATION_TYPE:{
+			RegisterLocation *reg_location = dst_location->sub_location;
 
-            switch (src_location->type){
-                case REGISTER_LOCATION_TYPE:{
-                    RegisterLocation *src = src_location->sub_location;
+			myass_pop_r64(myass, reg_location->reg);
 
-                    myass_imul_r64_r64(myass, dst->reg, src->reg);
+			break;
+		}default:{
+			assert(0 && "Illegal location type");
+		}
+	}
+}
 
-                    break;
-                }default:{
-                    assert(0 && "Illegal location type");
-                }
-            }
+void assemble_push_instruction(MyAss *myass, UnaryInstruction *instruction){
+	Location *src_location = instruction->location;
 
-            break;
-        }default:{
-            assert(0 && "Illegal location type");
-        }
-    }
+	switch (src_location->type) {
+		case REGISTER_LOCATION_TYPE:{
+			RegisterLocation *reg_location = src_location->sub_location;
+
+			myass_push_r64(myass, reg_location->reg);
+
+			break;
+		}default:{
+			assert(0 && "Illegal location type");
+		}
+	}
 }
 
 void assemble_sub_instruction(MyAss *myass, BinaryInstruction *instruction){
@@ -575,6 +621,12 @@ void assemble_instruction(MyAss *myass, Instruction *instruction){
         }case MOV_INSTRUCTION_TYPE:{
             assemble_mov_instruction(myass, instruction->sub_instruction);
             break;
+        }case POP_INSTRUCTION_TYPE:{
+            assemble_pop_instruction(myass, instruction->sub_instruction);
+            break;
+        }case PUSH_INSTRUCTION_TYPE:{
+            assemble_push_instruction(myass, instruction->sub_instruction);
+            break;
         }case IMUL_INSTRUCTION_TYPE:{
             assemble_imul_instruction(myass, instruction->sub_instruction);
             break;
@@ -641,6 +693,9 @@ void resolve_jumps(MyAss *myass){
     }
 }
 
+//------------------------------------------------------------------------------------//
+//                               PUBLIC IMPLEMENTATION                                //
+//------------------------------------------------------------------------------------//
 MyAss *myass_create(const Allocator *allocator){
     LZOHTable *registers_keywords = create_registers_keywords(allocator);
     LZOHTable *instructions_keywords = create_instructions_keywords(allocator);
@@ -719,14 +774,6 @@ void myass_mov_r64_r64(MyAss *myass, X64Register dst, X64Register src){
     lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
 }
 
-void myass_add_r64_r64(MyAss *myass, X64Register dst, X64Register src){
-    LZBBuff *bbuff = BBUFF;
-
-    lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
-    lzbbuff_write_byte(bbuff, 0, 0x03);
-    lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
-}
-
 void myass_add_r64_imm32(MyAss *myass, X64Register dst, dword src){
     LZBBuff *bbuff = BBUFF;
 
@@ -736,19 +783,19 @@ void myass_add_r64_imm32(MyAss *myass, X64Register dst, dword src){
     lzbbuff_write_dword(bbuff, 0, src);
 }
 
+void myass_add_r64_r64(MyAss *myass, X64Register dst, X64Register src){
+    LZBBuff *bbuff = BBUFF;
+
+    lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
+    lzbbuff_write_byte(bbuff, 0, 0x03);
+    lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
+}
+
 void myass_call_imm32(MyAss *myass, dword offset){
 	LZBBuff *bbuff = BBUFF;
 
     lzbbuff_write_byte(bbuff, 0, 0xe8);
     lzbbuff_write_dword(bbuff, 0, offset);
-}
-
-void myass_cmp_r64_r64(MyAss *myass, X64Register dst, X64Register src){
-    LZBBuff *bbuff = BBUFF;
-
-    lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
-    lzbbuff_write_byte(bbuff, 0, 0x3b);
-    lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
 }
 
 void myass_cmp_r64_imm32(MyAss *myass, X64Register dst, dword src){
@@ -758,6 +805,14 @@ void myass_cmp_r64_imm32(MyAss *myass, X64Register dst, dword src){
     lzbbuff_write_byte(bbuff, 0, 0x81);
     lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, 7, dst));
     lzbbuff_write_dword(bbuff, 0, src);
+}
+
+void myass_cmp_r64_r64(MyAss *myass, X64Register dst, X64Register src){
+    LZBBuff *bbuff = BBUFF;
+
+    lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
+    lzbbuff_write_byte(bbuff, 0, 0x3b);
+    lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
 }
 
 void myass_idiv_r64(MyAss *myass, X64Register src){
@@ -824,12 +879,18 @@ void myass_jmp_imm32(MyAss *myass, dword offset){
     lzbbuff_write_dword(bbuff, 0, offset);
 }
 
-void myass_sub_r64_r64(MyAss *myass, X64Register dst, X64Register src){
-    LZBBuff *bbuff = BBUFF;
+void myass_pop_r64(MyAss *myass, X64Register dst){
+	LZBBuff *bbuff = BBUFF;
 
-    lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
-    lzbbuff_write_byte(bbuff, 0, 0x2b);
-    lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
+	if(dst > 7) lzbbuff_write_byte(bbuff, 0, rex(0, 0, 0, 1));
+    lzbbuff_write_byte(bbuff, 0, 0x58 | (((byte)dst) & 0b00000111));
+}
+
+void myass_push_r64(MyAss *myass, X64Register src){
+	LZBBuff *bbuff = BBUFF;
+
+	if(src > 7) lzbbuff_write_byte(bbuff, 0, rex(0, 0, 0, 1));
+    lzbbuff_write_byte(bbuff, 0, 0x50 | (((byte)src) & 0b00000111));
 }
 
 void myass_sub_r64_imm32(MyAss *myass, X64Register dst, dword src){
@@ -841,18 +902,18 @@ void myass_sub_r64_imm32(MyAss *myass, X64Register dst, dword src){
     lzbbuff_write_dword(bbuff, 0, src);
 }
 
+void myass_sub_r64_r64(MyAss *myass, X64Register dst, X64Register src){
+    LZBBuff *bbuff = BBUFF;
+
+    lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
+    lzbbuff_write_byte(bbuff, 0, 0x2b);
+    lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
+}
+
 void myass_ret(MyAss *myass){
     LZBBuff *bbuff = BBUFF;
 
     lzbbuff_write_byte(bbuff, 0, 0xc3);
-}
-
-void myass_xor_r64_r64(MyAss *myass, X64Register dst, X64Register src){
-    LZBBuff *bbuff = BBUFF;
-
-    lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
-    lzbbuff_write_byte(bbuff, 0, 0x33);
-    lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
 }
 
 void myass_xor_r64_imm32(MyAss *myass, X64Register dst, dword src){
@@ -862,6 +923,14 @@ void myass_xor_r64_imm32(MyAss *myass, X64Register dst, dword src){
     lzbbuff_write_byte(bbuff, 0, 0x81);
     lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, 6, dst));
     lzbbuff_write_dword(bbuff, 0, src);
+}
+
+void myass_xor_r64_r64(MyAss *myass, X64Register dst, X64Register src){
+    LZBBuff *bbuff = BBUFF;
+
+    lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
+    lzbbuff_write_byte(bbuff, 0, 0x33);
+    lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
 }
 
 int myass_assemble(MyAss *myass, size_t input_len, const char *input){

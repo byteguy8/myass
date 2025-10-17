@@ -9,8 +9,9 @@
 #include <assert.h>
 #include <inttypes.h>
 
-#define CURRENT_LEXEME (peek(parser)->lexeme)
 #define ALLOCATOR (parser->allocator)
+#define CURRENT_LEXEME (peek(parser)->lexeme)
+
 //------------------------------------------------------------
 //                      PRIVATE INTERFACE                   //
 //------------------------------------------------------------
@@ -29,6 +30,21 @@ static Location *create_register_location(Parser *parser, X64Register reg);
 static Location *create_literal_location(Parser *parser, dword value);
 static Location *create_label_location(Parser *parser, Token *label_token);
 static Location *token_to_location(Parser *parser, Token *location_token);
+
+static Instruction *parse_label_instruction(Parser *parser);
+static Instruction *parse_add_instruction(Parser *parser);
+static Instruction *parse_call_instruction(Parser *parser);
+static Instruction *parse_cmp_instruction(Parser *parser);
+static Instruction *parse_idiv_instruction(Parser *parser);
+static Instruction *parse_imul_instruction(Parser *parser);
+static Instruction *parse_jcc_instruction(Parser *parser);
+static Instruction *parse_jmp_instruction(Parser *parser);
+static Instruction *parse_mov_instruction(Parser *parser);
+static Instruction *parse_pop_instruction(Parser *parser);
+static Instruction *parse_push_instruction(Parser *parser);
+static Instruction *parse_sub_instruction(Parser *parser);
+static Instruction *parse_ret_instruction(Parser *parser);
+static Instruction *parse_xor_instruction(Parser *parser);
 static Instruction *parse_instruction(Parser *parser);
 //------------------------------------------------------------
 //                 PRIVATE IMPLEMENTATOIN                   //
@@ -211,177 +227,537 @@ Location *token_to_location(Parser *parser, Token *location_token){
     return NULL;
 }
 
-Instruction *parse_instruction(Parser *parser){
-    if(match(parser, 1, IDENTIFIER_TOKEN_TYPE)){
-        Token *label_token = previous(parser);
+Instruction *parse_label_instruction(Parser *parser){
+	Token *label_token = previous(parser);
 
-        consume(
+    consume(
+        parser,
+        COLON_TOKEN_TYPE,
+        "Expect ':' token after label, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    EmptyInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        EmptyInstruction,
+        label_token
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        LABEL_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_add_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *dst_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    consume(
+        parser,
+        COMMA_TOKEN_TYPE,
+        "Expect ',', but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    Token *src_token = NULL;
+
+    if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
+        src_token = previous(parser);
+    }
+
+    if(!src_token){
+        error(
             parser,
-            COLON_TOKEN_TYPE,
-            "Expect ':' token after label, but got: '%s'",
+            peek(parser),
+            "Expect literal or register, but got: '%s'",
             CURRENT_LEXEME
         );
+    }
 
-        EmptyInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            EmptyInstruction,
-            label_token
-        );
+    BinaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        BinaryInstruction,
+        token_to_location(parser, dst_token),
+        token_to_location(parser, src_token),
+        instruction_token,
+        dst_token,
+        src_token
+    );
 
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            LABEL_INSTRUCTION_TYPE,
-            instruction
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        ADD_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_call_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *label_token = consume(
+        parser,
+        IDENTIFIER_TOKEN_TYPE,
+        "Expect label after instruction, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    UnaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        UnaryInstruction,
+        token_to_location(parser, label_token),
+        instruction_token,
+        label_token,
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        CALL_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_cmp_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *dst_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    consume(
+        parser,
+        COMMA_TOKEN_TYPE,
+        "Expect ',' token after dest operand, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    Token *src_token = NULL;
+
+    if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
+        src_token = previous(parser);
+    }
+
+    if(!src_token){
+        error(
+            parser,
+            instruction_token,
+            "Expect immediate value or register after ',' token as source operand, but got: '%s'",
+            CURRENT_LEXEME
         );
+    }
+
+    BinaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        BinaryInstruction,
+        token_to_location(parser, dst_token),
+        token_to_location(parser, src_token),
+        instruction_token,
+        dst_token,
+        src_token
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        CMP_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_idiv_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *src_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    UnaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        UnaryInstruction,
+        token_to_location(parser, src_token),
+        instruction_token,
+        src_token,
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        IDIV_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_imul_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *dst_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    consume(
+        parser,
+        COMMA_TOKEN_TYPE,
+        "Expect ',', but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    Token *src_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    if(!src_token){
+        error(
+            parser,
+            peek(parser),
+            "Expect literal or register, but got: '%s'",
+            CURRENT_LEXEME
+        );
+    }
+
+    BinaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        BinaryInstruction,
+        token_to_location(parser, dst_token),
+        token_to_location(parser, src_token),
+        instruction_token,
+        dst_token,
+        src_token
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        IMUL_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_jcc_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *label_token = consume(
+        parser,
+        IDENTIFIER_TOKEN_TYPE,
+        "Expect label name after '%s' instruction, but got: '%s'",
+        instruction_token->lexeme,
+        CURRENT_LEXEME
+    );
+
+    UnaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        UnaryInstruction,
+        token_to_location(parser, label_token),
+        instruction_token,
+        label_token,
+    );
+
+    InstructionType type;
+
+    switch (instruction_token->type){
+        case JE_TOKEN_TYPE:{
+            type = JE_INSTRUCTION_TYPE;
+            break;
+        }case JG_TOKEN_TYPE:{
+            type = JG_INSTRUCTION_TYPE;
+            break;
+        }case JL_TOKEN_TYPE:{
+            type = JL_INSTRUCTION_TYPE;
+            break;
+        }case JGE_TOKEN_TYPE:{
+            type = JGE_INSTRUCTION_TYPE;
+            break;
+        }case JLE_TOKEN_TYPE:{
+            type = JLE_INSTRUCTION_TYPE;
+            break;
+        }default:{
+            assert(0 && "Illegal token type");
+        }
+    }
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        type,
+        instruction
+    );
+}
+
+Instruction *parse_jmp_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *label_token = consume(
+        parser,
+        IDENTIFIER_TOKEN_TYPE,
+        "Expect label name after jmp instruction, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    UnaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        UnaryInstruction,
+        token_to_location(parser, label_token),
+        instruction_token,
+        label_token,
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        JMP_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_mov_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *dst_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register as destination operand, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    consume(
+        parser,
+        COMMA_TOKEN_TYPE,
+        "Expect ',' after destination operand, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    Token *src_token = NULL;
+
+    if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
+        src_token = previous(parser);
+    }
+
+    if(!src_token){
+        error(
+            parser,
+            peek(parser),
+            "Expect literal or register as source operand, but got: '%s'",
+            CURRENT_LEXEME
+        );
+    }
+
+    BinaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        BinaryInstruction,
+        token_to_location(parser, dst_token),
+        token_to_location(parser, src_token),
+        instruction_token,
+        dst_token,
+        src_token
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        MOV_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_pop_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *dst_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register as destination operand, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    UnaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        UnaryInstruction,
+        token_to_location(parser, dst_token),
+        instruction_token,
+        dst_token,
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        POP_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_push_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *src_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register as source operand, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    UnaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        UnaryInstruction,
+        token_to_location(parser, src_token),
+        instruction_token,
+        src_token,
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        PUSH_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_sub_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *dst_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    consume(
+        parser,
+        COMMA_TOKEN_TYPE,
+        "Expect ',', but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    Token *src_token = NULL;
+
+    if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
+        src_token = previous(parser);
+    }
+
+    if(!src_token){
+        error(
+            parser,
+            peek(parser),
+            "Expect literal or register, but got: '%s'",
+            CURRENT_LEXEME
+        );
+    }
+
+    BinaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        BinaryInstruction,
+        token_to_location(parser, dst_token),
+        token_to_location(parser, src_token),
+        instruction_token,
+        dst_token,
+        src_token
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        SUB_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_ret_instruction(Parser *parser){
+	EmptyInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        EmptyInstruction,
+        previous(parser)
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        RET_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_xor_instruction(Parser *parser){
+	Token *instruction_token = previous(parser);
+    Token *dst_token = consume(
+        parser,
+        REGISTER_TOKEN_TYPE,
+        "Expect register, but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    consume(
+        parser,
+        COMMA_TOKEN_TYPE,
+        "Expect ',', but got: '%s'",
+        CURRENT_LEXEME
+    );
+
+    Token *src_token = NULL;
+
+    if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
+        src_token = previous(parser);
+    }
+
+    if(!src_token){
+        error(
+            parser,
+            peek(parser),
+            "Expect literal or register, but got: '%s'",
+            CURRENT_LEXEME
+        );
+    }
+
+    BinaryInstruction *instruction = MEMORY_NEW(
+        ALLOCATOR,
+        BinaryInstruction,
+        token_to_location(parser, dst_token),
+        token_to_location(parser, src_token),
+        instruction_token,
+        dst_token,
+        src_token
+    );
+
+    return MEMORY_NEW(
+        ALLOCATOR,
+        Instruction,
+        XOR_INSTRUCTION_TYPE,
+        instruction
+    );
+}
+
+Instruction *parse_instruction(Parser *parser){
+    if(match(parser, 1, IDENTIFIER_TOKEN_TYPE)){
+    	return parse_label_instruction(parser);
     }
 
     if(match(parser, 1, ADD_TOKEN_TYPE)){
-    	Token *instruction_token = previous(parser);
-        Token *dst_token = consume(
-            parser,
-            REGISTER_TOKEN_TYPE,
-            "Expect register, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        consume(
-            parser,
-            COMMA_TOKEN_TYPE,
-            "Expect ',', but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        Token *src_token = NULL;
-
-        if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
-            src_token = previous(parser);
-        }
-
-        if(!src_token){
-            error(
-                parser,
-                peek(parser),
-                "Expect literal or register, but got: '%s'",
-                CURRENT_LEXEME
-            );
-        }
-
-        BinaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            BinaryInstruction,
-            token_to_location(parser, dst_token),
-            token_to_location(parser, src_token),
-            instruction_token,
-            dst_token,
-            src_token
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            ADD_INSTRUCTION_TYPE,
-            instruction
-        );
+    	return parse_add_instruction(parser);
     }
 
     if(match(parser, 1, CALL_TOKEN_TYPE)){
-    	Token *instruction_token = previous(parser);
-        Token *label_token = consume(
-            parser,
-            IDENTIFIER_TOKEN_TYPE,
-            "Expect label after instruction, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        UnaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            UnaryInstruction,
-            token_to_location(parser, label_token),
-            instruction_token,
-            label_token,
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            CALL_INSTRUCTION_TYPE,
-            instruction
-        );
+    	return parse_call_instruction(parser);
     }
 
     if(match(parser, 1, CMP_TOKEN_TYPE)){
-        Token *instruction_token = previous(parser);
-        Token *dst_token = consume(
-            parser,
-            REGISTER_TOKEN_TYPE,
-            "Expect register, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        consume(
-            parser,
-            COMMA_TOKEN_TYPE,
-            "Expect ',' token after dest operand, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        Token *src_token = NULL;
-
-        if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
-            src_token = previous(parser);
-        }
-
-        if(!src_token){
-            error(
-                parser,
-                instruction_token,
-                "Expect immediate value or register after ',' token as source operand, but got: '%s'",
-                CURRENT_LEXEME
-            );
-        }
-
-        BinaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            BinaryInstruction,
-            token_to_location(parser, dst_token),
-            token_to_location(parser, src_token),
-            instruction_token,
-            dst_token,
-            src_token
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            CMP_INSTRUCTION_TYPE,
-            instruction
-        );
+        return parse_cmp_instruction(parser);
     }
 
     if(match(parser, 1, IDIV_TOKEN_TYPE)){
-    	Token *instruction_token = previous(parser);
-        Token *src_token = consume(
-            parser,
-            REGISTER_TOKEN_TYPE,
-            "Expect register, but got: '%s'",
-            CURRENT_LEXEME
-        );
+    	return parse_idiv_instruction(parser);
+    }
 
-        UnaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            UnaryInstruction,
-            token_to_location(parser, src_token),
-            instruction_token,
-            src_token,
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            IDIV_INSTRUCTION_TYPE,
-            instruction
-        );
+    if(match(parser, 1, IMUL_TOKEN_TYPE)){
+    	return parse_imul_instruction(parser);
     }
 
     if(match(
@@ -393,289 +769,35 @@ Instruction *parse_instruction(Parser *parser){
         JGE_TOKEN_TYPE,
         JLE_TOKEN_TYPE
     )){
-        Token *instruction_token = previous(parser);
-        Token *label_token = consume(
-            parser,
-            IDENTIFIER_TOKEN_TYPE,
-            "Expect label name after '%s' instruction, but got: '%s'",
-            instruction_token->lexeme,
-            CURRENT_LEXEME
-        );
-
-        UnaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            UnaryInstruction,
-            token_to_location(parser, label_token),
-            instruction_token,
-            label_token,
-        );
-
-        InstructionType type;
-
-        switch (instruction_token->type){
-            case JE_TOKEN_TYPE:{
-                type = JE_INSTRUCTION_TYPE;
-                break;
-            }case JG_TOKEN_TYPE:{
-                type = JG_INSTRUCTION_TYPE;
-                break;
-            }case JL_TOKEN_TYPE:{
-                type = JL_INSTRUCTION_TYPE;
-                break;
-            }case JGE_TOKEN_TYPE:{
-                type = JGE_INSTRUCTION_TYPE;
-                break;
-            }case JLE_TOKEN_TYPE:{
-                type = JLE_INSTRUCTION_TYPE;
-                break;
-            }default:{
-                assert(0 && "Illegal token type");
-            }
-        }
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            type,
-            instruction
-        );
+        return parse_jcc_instruction(parser);
     }
 
     if(match(parser, 1, JMP_TOKEN_TYPE)){
-    	Token *instruction_token = previous(parser);
-        Token *label_token = consume(
-            parser,
-            IDENTIFIER_TOKEN_TYPE,
-            "Expect label name after jmp instruction, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        UnaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            UnaryInstruction,
-            token_to_location(parser, label_token),
-            instruction_token,
-            label_token,
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            JMP_INSTRUCTION_TYPE,
-            instruction
-        );
+    	return parse_jmp_instruction(parser);
     }
 
     if(match(parser, 1, MOV_TOKEN_TYPE)){
-    	Token *instruction_token = previous(parser);
-        Token *dst_token = consume(
-            parser,
-            REGISTER_TOKEN_TYPE,
-            "Expect register as destination operand, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        consume(
-            parser,
-            COMMA_TOKEN_TYPE,
-            "Expect ',' after destination operand, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        Token *src_token = NULL;
-
-        if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
-            src_token = previous(parser);
-        }
-
-        if(!src_token){
-            error(
-                parser,
-                peek(parser),
-                "Expect literal or register as source operand, but got: '%s'",
-                CURRENT_LEXEME
-            );
-        }
-
-        BinaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            BinaryInstruction,
-            token_to_location(parser, dst_token),
-            token_to_location(parser, src_token),
-            instruction_token,
-            dst_token,
-            src_token
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            MOV_INSTRUCTION_TYPE,
-            instruction
-        );
+    	return parse_mov_instruction(parser);
     }
 
-    if(match(parser, 1, IMUL_TOKEN_TYPE)){
-    	Token *instruction_token = previous(parser);
-        Token *dst_token = consume(
-            parser,
-            REGISTER_TOKEN_TYPE,
-            "Expect register, but got: '%s'",
-            CURRENT_LEXEME
-        );
+    if(match(parser, 1, POP_TOKEN_TYPE)){
+    	return parse_pop_instruction(parser);
+    }
 
-        consume(
-            parser,
-            COMMA_TOKEN_TYPE,
-            "Expect ',', but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        Token *src_token = consume(
-            parser,
-            REGISTER_TOKEN_TYPE,
-            "Expect register, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        if(!src_token){
-            error(
-                parser,
-                peek(parser),
-                "Expect literal or register, but got: '%s'",
-                CURRENT_LEXEME
-            );
-        }
-
-        BinaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            BinaryInstruction,
-            token_to_location(parser, dst_token),
-            token_to_location(parser, src_token),
-            instruction_token,
-            dst_token,
-            src_token
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            IMUL_INSTRUCTION_TYPE,
-            instruction
-        );
+    if(match(parser, 1, PUSH_TOKEN_TYPE)){
+    	return parse_push_instruction(parser);
     }
 
     if(match(parser, 1, SUB_TOKEN_TYPE)){
-    	Token *instruction_token = previous(parser);
-        Token *dst_token = consume(
-            parser,
-            REGISTER_TOKEN_TYPE,
-            "Expect register, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        consume(
-            parser,
-            COMMA_TOKEN_TYPE,
-            "Expect ',', but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        Token *src_token = NULL;
-
-        if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
-            src_token = previous(parser);
-        }
-
-        if(!src_token){
-            error(
-                parser,
-                peek(parser),
-                "Expect literal or register, but got: '%s'",
-                CURRENT_LEXEME
-            );
-        }
-
-        BinaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            BinaryInstruction,
-            token_to_location(parser, dst_token),
-            token_to_location(parser, src_token),
-            instruction_token,
-            dst_token,
-            src_token
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            SUB_INSTRUCTION_TYPE,
-            instruction
-        );
+    	return parse_sub_instruction(parser);
     }
 
     if(match(parser, 1, RET_TOKEN_TYPE)){
-        EmptyInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            EmptyInstruction,
-            previous(parser)
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            RET_INSTRUCTION_TYPE,
-            instruction
-        );
+        return parse_ret_instruction(parser);
     }
 
     if(match(parser, 1, XOR_TOKEN_TYPE)){
-    	Token *instruction_token = previous(parser);
-        Token *dst_token = consume(
-            parser,
-            REGISTER_TOKEN_TYPE,
-            "Expect register, but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        consume(
-            parser,
-            COMMA_TOKEN_TYPE,
-            "Expect ',', but got: '%s'",
-            CURRENT_LEXEME
-        );
-
-        Token *src_token = NULL;
-
-        if(match(parser, 2, DWORD_TYPE_TOKEN_TYPE, REGISTER_TOKEN_TYPE)){
-            src_token = previous(parser);
-        }
-
-        if(!src_token){
-            error(
-                parser,
-                peek(parser),
-                "Expect literal or register, but got: '%s'",
-                CURRENT_LEXEME
-            );
-        }
-
-        BinaryInstruction *instruction = MEMORY_NEW(
-            ALLOCATOR,
-            BinaryInstruction,
-            token_to_location(parser, dst_token),
-            token_to_location(parser, src_token),
-            instruction_token,
-            dst_token,
-            src_token
-        );
-
-        return MEMORY_NEW(
-            ALLOCATOR,
-            Instruction,
-            XOR_INSTRUCTION_TYPE,
-            instruction
-        );
+    	return parse_xor_instruction(parser);
     }
 
     error(
