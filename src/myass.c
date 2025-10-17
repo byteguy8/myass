@@ -72,6 +72,7 @@ static void add_keyword(LZOHTable *keywords, const char *name, TokenType type);
 static LZOHTable *create_registers_keywords(const Allocator *allocator);
 static LZOHTable *create_instructions_keywords(const Allocator *allocator);
 static void assemble_add_instruction(MyAss *myass, BinaryInstruction *instruction);
+static void assemble_call_instruction(MyAss *myass, UnaryInstruction *instruction);
 static void assemble_cmp_instruction(MyAss *myass, BinaryInstruction *instruction);
 static void assemble_idiv_instruction(MyAss *myass, UnaryInstruction *instruction);
 static void assemble_jcc_instructions(
@@ -166,6 +167,7 @@ LZOHTable *create_instructions_keywords(const Allocator *allocator){
     LZOHTable *instructions = MEMORY_LZOHTABLE(allocator);
 
     add_keyword(instructions, "add", ADD_TOKEN_TYPE);
+    add_keyword(instructions, "call", CALL_TOKEN_TYPE);
     add_keyword(instructions, "cmp", CMP_TOKEN_TYPE);
     add_keyword(instructions, "idiv", IDIV_TOKEN_TYPE);
     add_keyword(instructions, "imul", IMUL_TOKEN_TYPE);
@@ -208,6 +210,32 @@ void assemble_add_instruction(MyAss *myass, BinaryInstruction *instruction){
                     assert(0 && "Illegal location type");
                 }
             }
+
+            break;
+        }default:{
+            assert(0 && "Illegal location type");
+        }
+    }
+}
+
+void assemble_call_instruction(MyAss *myass, UnaryInstruction *instruction){
+    Location *location = instruction->location;
+
+    switch (location->type){
+        case LABEL_LOCATION_TYPE:{
+            myass_call_imm32(myass, 0);
+
+            LabelLocation *label_location = location->sub_location;
+            size_t offset = lzbbuff_used_bytes(myass->bbuff);
+            Token *label_token = label_location->label_token;
+            Jmp *jmp = MEMORY_NEW(
+                ALLOCATOR,
+                Jmp,
+                offset,
+                label_token
+            );
+
+            lzstack_push(jmp, myass->jumps_to_resolve);
 
             break;
         }default:{
@@ -521,6 +549,9 @@ void assemble_instruction(MyAss *myass, Instruction *instruction){
         }case ADD_INSTRUCTION_TYPE:{
             assemble_add_instruction(myass, instruction->sub_instruction);
             break;
+        }case CALL_INSTRUCTION_TYPE:{
+            assemble_call_instruction(myass, instruction->sub_instruction);
+            break;
         }case CMP_INSTRUCTION_TYPE:{
             assemble_cmp_instruction(myass, instruction->sub_instruction);
             break;
@@ -703,6 +734,13 @@ void myass_add_r64_imm32(MyAss *myass, X64Register dst, dword src){
     lzbbuff_write_byte(bbuff, 0, 0x81);
     lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, 0, dst));
     lzbbuff_write_dword(bbuff, 0, src);
+}
+
+void myass_call_imm32(MyAss *myass, dword offset){
+	LZBBuff *bbuff = BBUFF;
+
+    lzbbuff_write_byte(bbuff, 0, 0xe8);
+    lzbbuff_write_dword(bbuff, 0, offset);
 }
 
 void myass_cmp_r64_r64(MyAss *myass, X64Register dst, X64Register src){

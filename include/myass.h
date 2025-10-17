@@ -15,6 +15,8 @@ void myass_print_as_hex(const MyAss *myass, int wprefix);
 void myass_add_r64_r64(MyAss *myass, X64Register dst, X64Register src);
 void myass_add_r64_imm32(MyAss *myass, X64Register dst, dword src);
 
+void myass_call_imm32(MyAss *myass, dword offset);
+
 void myass_cmp_r64_r64(MyAss *myass, X64Register dst, X64Register src);
 void myass_cmp_r64_imm32(MyAss *myass, X64Register dst, dword src);
 

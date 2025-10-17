@@ -285,6 +285,31 @@ Instruction *parse_instruction(Parser *parser){
         );
     }
 
+    if(match(parser, 1, CALL_TOKEN_TYPE)){
+    	Token *instruction_token = previous(parser);
+        Token *label_token = consume(
+            parser,
+            IDENTIFIER_TOKEN_TYPE,
+            "Expect label after instruction, but got: '%s'",
+            CURRENT_LEXEME
+        );
+
+        UnaryInstruction *instruction = MEMORY_NEW(
+            ALLOCATOR,
+            UnaryInstruction,
+            token_to_location(parser, label_token),
+            instruction_token,
+            label_token,
+        );
+
+        return MEMORY_NEW(
+            ALLOCATOR,
+            Instruction,
+            CALL_INSTRUCTION_TYPE,
+            instruction
+        );
+    }
+
     if(match(parser, 1, CMP_TOKEN_TYPE)){
         Token *instruction_token = previous(parser);
         Token *dst_token = consume(

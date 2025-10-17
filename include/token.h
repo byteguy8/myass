@@ -12,6 +12,7 @@ typedef enum token_type{
     REGISTER_TOKEN_TYPE,
 
     ADD_TOKEN_TYPE,
+    CALL_TOKEN_TYPE,
     CMP_TOKEN_TYPE,
     IDIV_TOKEN_TYPE,
     IMUL_TOKEN_TYPE,
