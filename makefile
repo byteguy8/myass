@@ -16,7 +16,7 @@ FLAGS            := $(FLAGS.DEFAULT) $(FLAGS.$(BUILD))
 OUT_DIR          := build
 SRC_DIR          := src
 
-OBJS             := dynarr.o lzstack.o lzohtable.o memory.o lzbbuff.o lzarena.o \
+OBJS             := lzbstr.o dynarr.o lzstack.o lzohtable.o memory.o lzbbuff.o lzarena.o \
                     lexer.o parser.o myass.o
 
 main: $(OBJS)
@@ -41,3 +41,5 @@ lzstack.o:
 	$(COMPILER) -c -o $(OUT_DIR)/lzstack.o $(FLAGS) $(SRC_DIR)/essentials/lzstack.c
 dynarr.o:
 	$(COMPILER) -c -o $(OUT_DIR)/dynarr.o $(FLAGS) $(SRC_DIR)/essentials/dynarr.c
+lzbstr.o:
+	$(COMPILER) -c -o $(OUT_DIR)/lzbstr.o $(FLAGS) $(SRC_DIR)/essentials/lzbstr.c

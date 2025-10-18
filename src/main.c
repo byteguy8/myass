@@ -1,9 +1,36 @@
 #include "essentials/lzarena.h"
 #include "myass.h"
+#include "types.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+
+#define ARG_FORMATTED_PRINT 0b00000001
+
+typedef struct args{
+	byte flags;
+	const char *input;
+}Args;
+
+Args parse_args(int argc, char const *argv[]){
+	byte flags = 0;
+	const char *input = NULL;
+
+	for (int i = 0; i < argc; i++) {
+		const char *arg = argv[i];
+		size_t arg_len = strlen(arg);
+
+		if(arg_len == 2 && (strncmp(arg, "-f", 2) == 0)){
+			flags |= ARG_FORMATTED_PRINT;
+		}else{
+			input = arg;
+		}
+	}
+
+	return (Args){.flags = flags, .input = input};
+}
 
 BStr *read_source(const Allocator *allocator, const char *pathname){
 	FILE *source_file = fopen(pathname, "r");
@@ -38,11 +65,17 @@ BStr *read_source(const Allocator *allocator, const char *pathname){
 }
 
 int main(int argc, char const *argv[]){
-    if(argc != 2){
+    if(argc < 2){
         fprintf(stderr, "Usage: myass <source file>\n");
+        fprintf(stderr, "\n");
+        fprintf(stderr, "Arguments\n");
+        fprintf(stderr, "  -f\n");
+        fprintf(stderr, "                      Format output\n");
+
         exit(EXIT_FAILURE);
     }
 
+    Args args = parse_args(argc, argv);
     LZArena *arena = lzarena_create(NULL);
     AllocatorContext allocator_context = {
         .err_buf = NULL,
@@ -58,11 +91,16 @@ int main(int argc, char const *argv[]){
         &allocator
     );
 
-    BStr *input = read_source(&allocator, argv[1]);
+    BStr *input = read_source(&allocator, args.input);
     MyAss *myass = myass_create(&allocator);
 
     myass_assemble(myass, input->len, input->buff);
-    myass_print_as_hex(myass, 0);
+
+    if(args.flags & ARG_FORMATTED_PRINT){
+   		myass_formatted_print_hex(myass);
+    }else{
+    	myass_print_as_hex(myass, 0);
+    }
 
     lzarena_destroy(arena);
 

@@ -246,6 +246,8 @@ Instruction *parse_label_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         LABEL_INSTRUCTION_TYPE,
         instruction
     );
@@ -295,6 +297,8 @@ Instruction *parse_add_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         ADD_INSTRUCTION_TYPE,
         instruction
     );
@@ -320,6 +324,8 @@ Instruction *parse_call_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         CALL_INSTRUCTION_TYPE,
         instruction
     );
@@ -369,6 +375,8 @@ Instruction *parse_cmp_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         CMP_INSTRUCTION_TYPE,
         instruction
     );
@@ -394,6 +402,8 @@ Instruction *parse_idiv_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         IDIV_INSTRUCTION_TYPE,
         instruction
     );
@@ -444,6 +454,8 @@ Instruction *parse_imul_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         IMUL_INSTRUCTION_TYPE,
         instruction
     );
@@ -493,6 +505,8 @@ Instruction *parse_jcc_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         type,
         instruction
     );
@@ -518,6 +532,8 @@ Instruction *parse_jmp_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         JMP_INSTRUCTION_TYPE,
         instruction
     );
@@ -567,6 +583,8 @@ Instruction *parse_mov_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         MOV_INSTRUCTION_TYPE,
         instruction
     );
@@ -592,6 +610,8 @@ Instruction *parse_pop_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         POP_INSTRUCTION_TYPE,
         instruction
     );
@@ -617,6 +637,8 @@ Instruction *parse_push_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         PUSH_INSTRUCTION_TYPE,
         instruction
     );
@@ -666,6 +688,8 @@ Instruction *parse_sub_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         SUB_INSTRUCTION_TYPE,
         instruction
     );
@@ -681,6 +705,8 @@ Instruction *parse_ret_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         RET_INSTRUCTION_TYPE,
         instruction
     );
@@ -730,6 +756,8 @@ Instruction *parse_xor_instruction(Parser *parser){
     return MEMORY_NEW(
         ALLOCATOR,
         Instruction,
+        0,
+        0,
         XOR_INSTRUCTION_TYPE,
         instruction
     );

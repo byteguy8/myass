@@ -1,9 +1,11 @@
 #include "myass.h"
+#include "dynarr.h"
 #include "essentials/lzohtable.h"
 #include "essentials/lzarena.h"
 #include "essentials/lzbbuff.h"
 #include "essentials/memory.h"
 
+#include "lzbstr.h"
 #include "token.h"
 #include "lexer.h"
 #include "parser.h"
@@ -41,6 +43,8 @@ typedef struct myass{
     jmp_buf          err_buf;
     LZOHTable        *registers_keywords;
     LZOHTable        *instructions_keywords;
+    size_t           largest_instruction;
+    DynArr           *instructions;
     LZOHTable        *symbols;
     LZStack          *jumps_to_resolve;
     LZBBuff          *bbuff;
@@ -76,6 +80,10 @@ static byte mod_rm(Mod mod, X64Register dest, X64Register source);
 static void add_keyword(LZOHTable *keywords, const char *name, TokenType type);
 static LZOHTable *create_registers_keywords(const Allocator *allocator);
 static LZOHTable *create_instructions_keywords(const Allocator *allocator);
+
+static void reg_to_str(LZBStr *lzbstr, X64Register reg);
+static void location_to_str(LZBStr *lzbstr, Location *location);
+static void instruction_to_str(LZBStr *lzbstr, Instruction *instruction);
 
 static void assemble_add_instruction(MyAss *myass, BinaryInstruction *instruction);
 static void assemble_call_instruction(MyAss *myass, UnaryInstruction *instruction);
@@ -197,6 +205,221 @@ LZOHTable *create_instructions_keywords(const Allocator *allocator){
     add_keyword(instructions, "xor", XOR_TOKEN_TYPE);
 
     return instructions;
+}
+
+void reg_to_str(LZBStr *lzbstr, X64Register reg){
+	switch (reg) {
+		case RAX:{
+			lzbstr_append("rax", lzbstr);
+			break;
+		}case RCX:{
+			lzbstr_append("rcx", lzbstr);
+			break;
+		}case RDX:{
+			lzbstr_append("rdx", lzbstr);
+			break;
+		}case RBX:{
+			lzbstr_append("rbx", lzbstr);
+			break;
+		}case RSP:{
+			lzbstr_append("rsp", lzbstr);
+			break;
+		}case RBP:{
+			lzbstr_append("rbp", lzbstr);
+			break;
+		}case RSI:{
+			lzbstr_append("rsi", lzbstr);
+			break;
+		}case RDI:{
+			lzbstr_append("rdi", lzbstr);
+			break;
+		}case R8:{
+			lzbstr_append("r8", lzbstr);
+			break;
+		}case R9:{
+			lzbstr_append("r9", lzbstr);
+			break;
+		}case R10:{
+			lzbstr_append("r10", lzbstr);
+			break;
+		}case R11:{
+			lzbstr_append("r11", lzbstr);
+			break;
+		}case R12:{
+			lzbstr_append("r12", lzbstr);
+			break;
+		}case R13:{
+			lzbstr_append("r13", lzbstr);
+			break;
+		}case R14:{
+			lzbstr_append("r14", lzbstr);
+			break;
+		}case R15:{
+			lzbstr_append("r15", lzbstr);
+			break;
+		}
+	}
+}
+
+void location_to_str(LZBStr *lzbstr, Location *location){
+	switch (location->type) {
+		case LITERAL_LOCATION_TYPE:{
+			LiteralLocation *literal_location = location->sub_location;
+
+			lzbstr_append_args(lzbstr, "%"PRId32, literal_location->value);
+
+			break;
+		}case REGISTER_LOCATION_TYPE:{
+			RegisterLocation *reg_location = location->sub_location;
+
+			reg_to_str(lzbstr, reg_location->reg);
+
+			break;
+		}case LABEL_LOCATION_TYPE:{
+			LabelLocation *label_location = location->sub_location;
+
+			lzbstr_append_args(lzbstr, "%s", label_location->label_token->lexeme);
+
+			break;
+		}
+    }
+}
+
+void instruction_to_str(LZBStr *lzbstr, Instruction *instruction){
+	switch (instruction->type) {
+		case LABEL_INSTRUCTION_TYPE:{
+			break;
+		}case ADD_INSTRUCTION_TYPE:{
+			BinaryInstruction *add_instruction = instruction->sub_instruction;
+
+			lzbstr_append("add ", lzbstr);
+			location_to_str(lzbstr, add_instruction->dst_location);
+			lzbstr_append(", ", lzbstr);
+			location_to_str(lzbstr, add_instruction->src_location);
+
+			break;
+		}case CALL_INSTRUCTION_TYPE:{
+			UnaryInstruction *call_instruction = instruction->sub_instruction;
+
+			lzbstr_append("call ", lzbstr);
+			location_to_str(lzbstr, call_instruction->location);
+
+		    break;
+	    }case CMP_INSTRUCTION_TYPE:{
+			BinaryInstruction *cmp_instruction = instruction->sub_instruction;
+
+			lzbstr_append("cmp ", lzbstr);
+			location_to_str(lzbstr, cmp_instruction->dst_location);
+			lzbstr_append(", ", lzbstr);
+			location_to_str(lzbstr, cmp_instruction->src_location);
+
+   			break;
+	    }case IDIV_INSTRUCTION_TYPE:{
+			BinaryInstruction *div_instruction = instruction->sub_instruction;
+
+			lzbstr_append("div ", lzbstr);
+			location_to_str(lzbstr, div_instruction->dst_location);
+			lzbstr_append(", ", lzbstr);
+			location_to_str(lzbstr, div_instruction->src_location);
+
+		    break;
+	    }case IMUL_INSTRUCTION_TYPE:{
+			BinaryInstruction *imul_instruction = instruction->sub_instruction;
+
+			lzbstr_append("imul ", lzbstr);
+			location_to_str(lzbstr, imul_instruction->dst_location);
+			lzbstr_append(", ", lzbstr);
+			location_to_str(lzbstr, imul_instruction->src_location);
+
+		    break;
+	    }case JE_INSTRUCTION_TYPE:{
+			UnaryInstruction *je_instruction = instruction->sub_instruction;
+
+			lzbstr_append("je ", lzbstr);
+			location_to_str(lzbstr, je_instruction->location);
+
+			break;
+	    }case JG_INSTRUCTION_TYPE:{
+			UnaryInstruction *jg_instruction = instruction->sub_instruction;
+
+			lzbstr_append("jg ", lzbstr);
+			location_to_str(lzbstr, jg_instruction->location);
+
+			break;
+	    }case JL_INSTRUCTION_TYPE:{
+			UnaryInstruction *jl_instruction = instruction->sub_instruction;
+
+			lzbstr_append("jl ", lzbstr);
+			location_to_str(lzbstr, jl_instruction->location);
+
+		    break;
+	    }case JGE_INSTRUCTION_TYPE:{
+			UnaryInstruction *jge_instruction = instruction->sub_instruction;
+
+			lzbstr_append("jge ", lzbstr);
+			location_to_str(lzbstr, jge_instruction->location);
+
+		    break;
+	    }case JLE_INSTRUCTION_TYPE:{
+			UnaryInstruction *jle_instruction = instruction->sub_instruction;
+
+			lzbstr_append("jle ", lzbstr);
+			location_to_str(lzbstr, jle_instruction->location);
+
+		    break;
+	    }case JMP_INSTRUCTION_TYPE:{
+			UnaryInstruction *jmp_instruction = instruction->sub_instruction;
+
+			lzbstr_append("jmp ", lzbstr);
+			location_to_str(lzbstr, jmp_instruction->location);
+
+		    break;
+	    }case MOV_INSTRUCTION_TYPE:{
+			BinaryInstruction *mov_instruction = instruction->sub_instruction;
+
+			lzbstr_append("mov ", lzbstr);
+			location_to_str(lzbstr, mov_instruction->dst_location);
+			lzbstr_append(", ", lzbstr);
+			location_to_str(lzbstr, mov_instruction->src_location);
+
+		    break;
+	    }case POP_INSTRUCTION_TYPE:{
+			UnaryInstruction *pop_instruction = instruction->sub_instruction;
+
+			lzbstr_append("pop ", lzbstr);
+			location_to_str(lzbstr, pop_instruction->location);
+
+		    break;
+	    }case PUSH_INSTRUCTION_TYPE:{
+			UnaryInstruction *push_instruction = instruction->sub_instruction;
+
+			lzbstr_append("push ", lzbstr);
+			location_to_str(lzbstr, push_instruction->location);
+
+		    break;
+	    }case SUB_INSTRUCTION_TYPE:{
+			BinaryInstruction *sub_instruction = instruction->sub_instruction;
+
+			lzbstr_append("sub ", lzbstr);
+			location_to_str(lzbstr, sub_instruction->dst_location);
+			lzbstr_append(", ", lzbstr);
+			location_to_str(lzbstr, sub_instruction->src_location);
+
+			break;
+	    }case RET_INSTRUCTION_TYPE:{
+			lzbstr_append("ret", lzbstr);
+		    break;
+	    }case XOR_INSTRUCTION_TYPE:{
+			BinaryInstruction *xor_instruction = instruction->sub_instruction;
+
+			lzbstr_append("xor ", lzbstr);
+			location_to_str(lzbstr, xor_instruction->dst_location);
+			lzbstr_append(", ", lzbstr);
+			location_to_str(lzbstr, xor_instruction->src_location);
+
+		    break;
+	    }
+	}
 }
 
 void assemble_add_instruction(MyAss *myass, BinaryInstruction *instruction){
@@ -644,11 +867,24 @@ void assemble_instruction(MyAss *myass, Instruction *instruction){
 }
 
 void assemble_instructions(MyAss *myass, DynArr *instructions){
-    size_t len = DYNARR_LEN(instructions);
+	LZBBuff *bbuff = BBUFF;
+	size_t len = DYNARR_LEN(instructions);
 
     for (size_t i = 0; i < len; i++){
         Instruction *instruction = DYNARR_GET_PTR_AS(Instruction, i, instructions);
+        size_t used_before = lzbbuff_used_bytes(bbuff);
+
         assemble_instruction(myass, instruction);
+
+        size_t used_after = lzbbuff_used_bytes(bbuff);
+        size_t instruction_len = used_after - used_before;
+
+        instruction->offset = used_before;
+        instruction->len = instruction_len;
+
+        if(instruction_len > myass->largest_instruction){
+            myass->largest_instruction = instruction_len;
+        }
     }
 }
 
@@ -720,6 +956,10 @@ MyAss *myass_create(const Allocator *allocator){
 
     myass->registers_keywords = registers_keywords;
     myass->instructions_keywords = instructions_keywords;
+    myass->largest_instruction = 0;
+    myass->instructions = NULL;
+    myass->symbols = NULL;
+    myass->jumps_to_resolve = NULL;
     myass->bbuff = bbuff;
     myass->arena = arena;
     myass->arena_allocator_context = allocator_context;
@@ -772,6 +1012,71 @@ void myass_mov_r64_r64(MyAss *myass, X64Register dst, X64Register src){
     lzbbuff_write_byte(bbuff, 0, rex(1, dst > 7, 0, src > 7));
     lzbbuff_write_byte(bbuff, 0, 0x8b);
     lzbbuff_write_byte(bbuff, 0, mod_rm(REG_MODE, dst, src));
+}
+
+void myass_formatted_print_hex(const MyAss *myass){
+	size_t offset_len = 6;
+	size_t size_len = 6;
+	size_t others_len = 5;
+	size_t largest_bytes_len = myass->largest_instruction * 2;
+	size_t spacing_len = (myass->largest_instruction - 1) * 2;
+	size_t largest_line_len = offset_len + size_len + others_len + largest_bytes_len + spacing_len;
+
+	LZBStr *lzbstr = MEMORY_LZBSTR(ALLOCATOR);
+	DynArr *instructions = myass->instructions;
+	LZBBuff *bbuff = BBUFF;
+	size_t len = DYNARR_LEN(instructions);
+
+	for (size_t i = 0; i < len; i++) {
+		Instruction *instruction = dynarr_get_ptr(i, instructions);
+		size_t instruction_offset = instruction->offset;
+		size_t instruction_len = instruction->len;
+
+		if(instruction->type == LABEL_INSTRUCTION_TYPE){
+			EmptyInstruction *label_instruction = instruction->sub_instruction;
+
+			printf("%s:", label_instruction->token->lexeme);
+
+			if(i + 1 < len){
+				printf("\n");
+			}
+		}
+
+		if(instruction_len == 0){
+			continue;
+		}
+
+		printf("%06x", (unsigned int)instruction_offset);
+		printf(" - %06zu", instruction_len);
+		printf(": ");
+
+		for (size_t o = 0; o < instruction_len; o++) {
+			byte b = bbuff->raw_buff[instruction_offset + o];
+
+			printf("%02x", b);
+
+			if(o + 1 < instruction_len){
+				printf(", ");
+			}
+		}
+
+		size_t line_len = offset_len + size_len + others_len + (instruction_len * 2) + ((instruction_len - 1) * 2);
+
+		instruction_to_str(lzbstr, instruction);
+		printf(
+			"%*s%s",
+			(int)(largest_line_len - line_len + 8),
+			"",
+			lzbstr->buff
+		);
+		lzbstr_reset(lzbstr);
+
+		if(i + 1 < len){
+			printf("\n");
+		}
+	}
+
+	printf("\n");
 }
 
 void myass_add_r64_imm32(MyAss *myass, X64Register dst, dword src){
@@ -936,6 +1241,7 @@ void myass_xor_r64_r64(MyAss *myass, X64Register dst, X64Register src){
 int myass_assemble(MyAss *myass, size_t input_len, const char *input){
     if(setjmp(myass->err_buf) == 0){
         lzbbuff_restart(BBUFF);
+        lzarena_free_all(ARENA);
 
         LZOHTable *registers_keywords = myass->registers_keywords;
         LZOHTable *instructions_keywords = myass->instructions_keywords;
@@ -947,6 +1253,7 @@ int myass_assemble(MyAss *myass, size_t input_len, const char *input){
         Lexer *lexer = lexer_create(ALLOCATOR);
         Parser *parser = parser_create(ALLOCATOR);
 
+        myass->largest_instruction = 0;
         myass->symbols = symbols;
         myass->jumps_to_resolve = jumps_to_resolve;
 
@@ -960,8 +1267,8 @@ int myass_assemble(MyAss *myass, size_t input_len, const char *input){
 
         assemble_instructions(myass, instructions);
         resolve_jumps(myass);
-        lzarena_free_all(ARENA);
 
+        myass->instructions = instructions;
         myass->symbols = NULL;
         myass->jumps_to_resolve = NULL;
 

@@ -5,6 +5,8 @@
 #include "location.h"
 #include "token.h"
 
+#include <stddef.h>
+
 typedef enum instruction_type{
     LABEL_INSTRUCTION_TYPE,
 
@@ -46,6 +48,8 @@ typedef struct binary_instruction{
 }BinaryInstruction;
 
 typedef struct instruction{
+	size_t offset;
+	size_t len;
     InstructionType type;
     void *sub_instruction;
 }Instruction;
